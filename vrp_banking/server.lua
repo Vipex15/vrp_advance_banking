@@ -85,25 +85,6 @@ local function profit_taxes(menu) -- make profit from your bank
     end
 end
 
-local function request_stacks(menu) -- request stacks of money to add in bank
-    local user = vRP.users_by_source[menu.user.source]
-    if user then
-        local user_id = user.id
-        local character_id = user.cid
-        local bankData = user:BanksInfo(character_id) 
-        if bankData then
-            local amount = tonumber(user:prompt("Enter how many stacks (100.000$ per stack) to buy", ""))
-            if tonumber(amount) >= 1  then 
-                exports.oxmysql:execute("UPDATE vrp_banks SET request_stacks = request_stacks + ? WHERE bank_id = ?", {amount, bankData.bank_id}, function()
-                    vRP.EXT.Base.remote._notify(user_id, "Requested " .. amount .. " stacks.")
-                end)
-            else
-                vRP.EXT.Base.remote._notify(user_id, "Please enter a valid number of stacks ")
-            end
-        end
-    end
-end
-
 local function add_stacks(menu) -- add money in bank for player
     local user = vRP.users_by_source[menu.user.source]
     if user then
@@ -215,9 +196,7 @@ local function Bank_Info()
                 menu:addOption("Taxes Out", taxes_out, "Fees for withdraws money ("..Banking.cfg.taxes_out_min.."% - "..Banking.cfg.taxes_out_max.."%)")
                 menu:addOption("Stacks", add_stacks,"Add stack: "..formatNumber(money_binder))
                 menu:addOption("Profit", profit_taxes,"Take your profit from the bank ("..Profit.."$)")
-                menu:addOption("Request Stacks", request_stacks,"Request stacks of money: ")
                 menu:addOption("Upgrade", upg_dep,"Upgrade bank deposit")
-
             end
         end
     end)
@@ -525,8 +504,7 @@ function Banking:__construct()
                     taxes_profit INT NOT NULL DEFAULT 0,
                     taxes_in INT NOT NULL DEFAULT 0,
                     taxes_out INT NOT NULL DEFAULT 0,
-                    deposit_level INT NOT NULL DEFAULT 1,
-                    request_stacks INT NOT NULL DEFAULT 0 
+                    deposit_level INT NOT NULL DEFAULT 1
                 );
                 CREATE TABLE IF NOT EXISTS vrp_banks_transactions (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -579,8 +557,7 @@ function Banking:IDBankInfo(bank_id)
         local taxesIn = bankData.taxes_in
         local taxesOut = bankData.taxes_out
         local dep_lvl = bankData.deposit_level
-        local mission = bankData.request_stacks
-        return { bank_id = bankId, bank_name = bankName, money = money, taxes_in = taxesIn, taxes_out = taxesOut, taxes_profit = Profit, deposit_level = dep_lvl, request_stacks =  mission}
+        return { bank_id = bankId, bank_name = bankName, money = money, taxes_in = taxesIn, taxes_out = taxesOut, taxes_profit = Profit, deposit_level = dep_lvl}
     else
         return nil
     end
@@ -597,8 +574,7 @@ function Banking.User:BanksInfo(character_id)
         local taxesIn = bankData.taxes_in
         local taxesOut = bankData.taxes_out
         local dep_lvl = bankData.deposit_level
-        local mission = bankData.request_stacks
-        return { bank_id = bankId, bank_name = bankName, money = money, taxes_in = taxesIn, taxes_out = taxesOut, taxes_profit = Profit, deposit_level = dep_lvl, request_stacks =  mission}
+        return { bank_id = bankId, bank_name = bankName, money = money, taxes_in = taxesIn, taxes_out = taxesOut, taxes_profit = Profit, deposit_level = dep_lvl}
     else
         return nil
     end
