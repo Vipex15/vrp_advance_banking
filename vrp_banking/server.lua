@@ -94,35 +94,42 @@ local function add_stacks(menu) -- add money in bank for player
         if bankData then
             local lvl_dep = bankData.deposit_level
             if lvl_dep then
+                local infos_upgrade = Banking.cfg.upgrades[lvl_dep] 
+                local max_money = infos_upgrade.max_add_stacks
+                local money_bank = bankData.money
+                
                 local money_binder = user:getItemAmount("money")
                 local amount = tonumber(user:prompt("Enter the amount to deposit into your bank:<br>Packaged Money: "..formatNumber(money_binder), ""))
                 
-                if amount and lvl_dep < #Banking.cfg.upgrades and (bankData.money + amount) <= Banking.cfg.upgrades[lvl_dep + 1].max_add_stacks then
-                    if amount >= Banking.cfg.min_add_stacks then
-                        if tonumber(bankData.money) < Banking.cfg.upgrades[lvl_dep + 1].max_add_stacks then
-                            if amount <= money_binder then
-                                if user:tryTakeItem("money", amount) then
-                                    local transaction_date = os.date("%Y-%m-%d %H:%M:%S")
-                                    local transaction_type = "Deposit Bussines"
-                                    exports.oxmysql:execute("INSERT IGNORE INTO vrp_banks_transactions (character_id, bank_id, transaction_type, amount, transaction_date) VALUES (?, ?, ?, ?, ?)", {character_id, bankData.bank_id, transaction_type, amount, transaction_date}, function()
-                                        vRP:execute("vRP/update_bank_money", {character_id = character_id, amount = amount})
-                                        vRP.EXT.Base.remote._notify(user_id, "Added $" .. amount .. " to your bank.")
-                                        user:actualizeMenu(menu)
-                                    end)
+                if amount and amount >= Banking.cfg.min_deposit then
+                    local total_bank_money = money_bank + amount
+                    if total_bank_money <= max_money then
+                        if amount >= Banking.cfg.min_add_stacks then
+                            if tonumber(money_bank) < Banking.cfg.upgrades[lvl_dep].max_add_stacks then
+                                if amount <= money_binder then
+                                    if user:tryTakeItem("money", amount) then
+                                        local transaction_date = os.date("%Y-%m-%d %H:%M:%S")
+                                        local transaction_type = "Deposit Bussines"
+                                        exports.oxmysql:execute("INSERT IGNORE INTO vrp_banks_transactions (character_id, bank_id, transaction_type, amount, transaction_date) VALUES (?, ?, ?, ?, ?)", {character_id, bankData.bank_id, transaction_type, amount, transaction_date}, function()
+                                            vRP:execute("vRP/update_bank_money", {character_id = character_id, amount = amount})
+                                            vRP.EXT.Base.remote._notify(user_id, "Added $" .. amount .. " to your bank.")
+                                            user:actualizeMenu(menu)
+                                        end)
+                                    else
+                                        vRP.EXT.Base.remote._notify(user_id, "Failed to make the deposit.")
+                                    end
                                 else
-                                    vRP.EXT.Base.remote._notify(user_id, "Failed to make the deposit.")
+                                    vRP.EXT.Base.remote._notify(user_id, "Amount exceeds your money stacks.")
                                 end
                             else
-                                vRP.EXT.Base.remote._notify(user_id, "Amount exceeds your money stacks.")
+                                vRP.EXT.Base.remote._notify(user_id, "You have reached the maximum amount of stacks allowed in your bank.")
                             end
                         else
-                            vRP.EXT.Base.remote._notify(user_id, "You have reached the maximum amount of stacks allowed in your bank.")
+                            vRP.EXT.Base.remote._notify(user_id, "Please enter a valid amount greater than "..tonumber(Banking.cfg.min_add_stacks).."$")
                         end
                     else
-                        vRP.EXT.Base.remote._notify(user_id, "Please enter a valid amount greater than "..tonumber(Banking.cfg.min_add_stacks).."$")
+                        vRP.EXT.Base.remote._notify(user_id, "The amount exceeds the maximum stacks allowed in your bank.")
                     end
-                else
-                    vRP.EXT.Base.remote._notify(user_id, "The amount exceeds the maximum stacks allowed in your bank.")
                 end
             end
         end
