@@ -363,7 +363,7 @@ function Banking:withdraw(amount)
     end
 end
 
-function Banking:deposit(amount) -- DEPOSIT MONEY INTO YOUR ACCOUNT AND BANK
+function Banking:deposit(amount)-- DEPOSIT MONEY INTO YOUR ACCOUNT AND BANK
     local user = vRP.users_by_source[source]
     if user then
         local user_id = user.id
@@ -372,21 +372,29 @@ function Banking:deposit(amount) -- DEPOSIT MONEY INTO YOUR ACCOUNT AND BANK
         if bank_id then
             local bankData = Banking:IDBankInfo(bank_id) 
             if bankData then
+                local lvl_dep = bankData.deposit_level
+                local infos_upgrade = Banking.cfg.upgrades[lvl_dep] 
+                local max_money = infos_upgrade.max_money_in_bank
+                local money_bank = bankData.money
                 local balance = user:getWallet()
                 amount = tonumber(amount)
                 if amount and amount >= Banking.cfg.min_deposit and amount <= balance then
                     local taxes_in_percent = bankData.taxes_in
                     local taxed_amount = math.floor(amount * (taxes_in_percent / 100)) 
-                    if user:tryDeposit(amount) and user:tryPayCard(taxed_amount) then
-                        local transaction_date = os.date("%Y-%m-%d %H:%M:%S")
-                        local transaction_type = "Deposit"
-                        exports.oxmysql:execute("INSERT IGNORE INTO vrp_banks_transactions (character_id, bank_id, transaction_type, amount, transaction_date) VALUES (?, ?, ?, ?, ?)",  {character_id, bankData.bank_id, transaction_type, amount, transaction_date}, function()
-                            vRP:execute("vRP/add_taxes_profit", {character_id = character_id, taxed_amount = taxed_amount}) 
-                            exports.oxmysql:execute("UPDATE vrp_banks SET money = money + ? WHERE bank_id = ?", {amount, bankData.bank_id})
-                            vRP.EXT.Base.remote._notify(user_id, "Deposited: $" .. formatNumber(amount) .. " (Taxed: " ..formatNumber(taxed_amount).."$)")
-                        end)
+                    if money_bank + amount <= max_money then
+                        if user:tryDeposit(amount) and user:tryPayCard(taxed_amount) then
+                            local transaction_date = os.date("%Y-%m-%d %H:%M:%S")
+                            local transaction_type = "Deposit"
+                            exports.oxmysql:execute("INSERT IGNORE INTO vrp_banks_transactions (character_id, bank_id, transaction_type, amount, transaction_date) VALUES (?, ?, ?, ?, ?)",  {character_id, bankData.bank_id, transaction_type, amount, transaction_date}, function()
+                                vRP:execute("vRP/add_taxes_profit", {character_id = character_id, taxed_amount = taxed_amount}) 
+                                exports.oxmysql:execute("UPDATE vrp_banks SET money = money + ? WHERE bank_id = ?", {amount, bankData.bank_id})
+                                vRP.EXT.Base.remote._notify(user_id, "Deposited: $" .. formatNumber(amount) .. " (Taxed: " ..formatNumber(taxed_amount).."$)")
+                            end)
+                        else
+                            vRP.EXT.Base.remote._notify(user_id, "Failed to deposit funds.")
+                        end
                     else
-                        vRP.EXT.Base.remote._notify(user_id, "Failed to deposit funds.")
+                        vRP.EXT.Base.remote._notify(user_id, "Bank is full.")
                     end
                 else
                     vRP.EXT.Base.remote._notify(user_id, "Invalid deposit amount or insufficient balance.")
