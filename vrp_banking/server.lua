@@ -51,18 +51,37 @@ local function taxes_out(menu)   -- set taxes for withdrawn money
 end 
 end 
 
+local function create_acc(menu) -- price for create an account 
+    local user = vRP.users_by_source[menu.user.source]
+    local user_id = user.id
+    local character_id = user.cid
+    local acc_value = tonumber(user:prompt("Enter the price for opening an account at your bank: ($"..Banking.cfg.acc_price_min.." - $"..Banking.cfg.acc_price_max..")", ""))
+    if acc_value then
+        if acc_value >= Banking.cfg.acc_price_min and acc_value <= Banking.cfg.acc_price_max then
+            vRP:execute("vRP/create_acc", {character_id = character_id, acc_price = acc_value})
+            vRP.EXT.Base.remote._notify(user_id, "You set the price to $"..acc_value.." for opening an account.")
+            user:actualizeMenu(menu)
+        else
+            vRP.EXT.Base.remote._notify(user_id, "Price must be between $"..Banking.cfg.acc_price_min.." and $"..Banking.cfg.acc_price_max..".")
+        end
+    else
+        vRP.EXT.Base.remote._notify(user_id, "Invalid input. Please enter a valid number.")
+    end
+end
+
+
 local function profit_taxes(menu) -- make profit from your bank
     local user = vRP.users_by_source[menu.user.source]
     if user then
         local user_id = user.id
         local character_id = user.cid
-        local bankData = user:BanksInfo(character_id) 
+        local bankData = Banking:BanksInfo(character_id) 
         if bankData then
             local profit = bankData.taxes_profit
             local amount = tonumber(user:prompt("Enter the amount to withdraw from taxes profit: (Minimum: "..Banking.cfg.min_profit_takes.."$)", ""))
             if amount and amount >= Banking.cfg.min_profit_takes then
                 if amount <= profit then
-                    local taxed_amount = math.floor(amount / Banking.cfg.state_taxes) -- Round down to the nearest integer
+                    local taxed_amount = math.floor(amount / Banking.cfg.state_taxes) 
                     local final_amout = amount - taxed_amount
                     if user:tryGiveItem("money", final_amout) then
                         local transaction_date = os.date("%Y-%m-%d %H:%M:%S")
@@ -90,7 +109,7 @@ local function add_stacks(menu) -- add money in bank for player
     if user then
         local user_id = user.id
         local character_id = user.cid
-        local bankData = user:BanksInfo(character_id) 
+        local bankData = Banking:BanksInfo(character_id) 
         if bankData then
             local lvl_dep = bankData.deposit_level
             if lvl_dep then
@@ -145,7 +164,7 @@ local function upgrades_dep()
 
         if user_id and #Banking.cfg.upgrades > 0 then 
             local character_id = user.cid
-            local bankData = user:BanksInfo(character_id)
+            local bankData = Banking:BanksInfo(character_id)
             local current_deposit_level = bankData.deposit_level
             local next_deposit_level = current_deposit_level + 1
             local next_upgrade = Banking.cfg.upgrades[next_deposit_level]
@@ -184,7 +203,7 @@ local function Bank_Info()
         local user = vRP.users_by_source[menu.user.source]
         if user then
             local character_id = user.cid
-            local bankData = user:BanksInfo(character_id)
+            local bankData = Banking:BanksInfo(character_id)
             local identity = vRP.EXT.Identity:getIdentity(character_id)
             local money_binder = user:getItemAmount("money")
             if bankData and identity and #Banking.cfg.upgrades > 0 then
@@ -193,12 +212,14 @@ local function Bank_Info()
                 local Profit = formatNumber(bankData.taxes_profit)
                 local taxesIn = bankData.taxes_in
                 local taxesOut = bankData.taxes_out
+                local acc_price = bankData.create_acc
                 local lvl_dep = bankData.deposit_level
                 local infos_upgrade = Banking.cfg.upgrades[lvl_dep]
 
-                menu:addOption("Info", nil, "Owner: "..identity.name.." "..identity.firstname.."<br>Bank: "..bank_name.."<br> Money: "..formatNumber(money).."<br>Taxes In: "..taxesIn.."<br>Taxes Out: "..taxesOut..
+                menu:addOption("Info", nil, "Owner: "..identity.name.." "..identity.firstname.."<br>Bank: "..bank_name.."<br>Money: "..formatNumber(money).."<br>Account Price: "..acc_price.."$<br>Taxes In: "..taxesIn.."<br>Taxes Out: "..taxesOut..
                                             "<br>Deposit Level: "..lvl_dep.. "<br>Max Stacks: " .. formatNumber(infos_upgrade.max_add_stacks).."<br>Max Money: " ..formatNumber(infos_upgrade.max_money_in_bank).."<br> Profit: "..Profit)
 
+                menu:addOption("Account Price", create_acc, "Price for create an account for your bank ("..Banking.cfg.acc_price_min.."% - "..Banking.cfg.acc_price_max.."%)")
                 menu:addOption("Taxes In", taxes_in, "Fees for deposits the money ("..Banking.cfg.taxes_in_min.."% - "..Banking.cfg.taxes_in_max.."%)")
                 menu:addOption("Taxes Out", taxes_out, "Fees for withdraws money ("..Banking.cfg.taxes_out_min.."% - "..Banking.cfg.taxes_out_max.."%)")
                 menu:addOption("Stacks", add_stacks,"Add stack: "..formatNumber(money_binder))
@@ -207,23 +228,6 @@ local function Bank_Info()
             end
         end
     end)
-end
-
-function Banking:GetUserTransactions(character_id)
-    local transactions = {} 
-    local rows = exports.oxmysql:executeSync("SELECT transaction_type, amount, DATE_FORMAT(transaction_date, '%d-%m-%Y') AS formatted_date, DATE_FORMAT(transaction_date, '%H:%i:%s') AS formatted_hours FROM vrp_banks_transactions WHERE character_id = ?", {character_id})
-    if rows then
-        for _, row in ipairs(rows) do
-            local transaction = {
-                transaction_type = row.transaction_type,
-                amount = row.amount,
-                transaction_date = row.formatted_date,
-                transaction_hours = row.formatted_hours
-            }
-            table.insert(transactions, transaction) 
-        end
-    end
-    return transactions
 end
 
 local function transactions_menu(self)
@@ -411,49 +415,67 @@ function Banking:deposit(amount)-- DEPOSIT MONEY INTO YOUR ACCOUNT AND BANK
     end
 end
 
-local function BankFunctions(self) 
+local function BankFunctions(self)
     vRP.EXT.GUI:registerMenuBuilder("Bank Functions", function(menu)
         local user = vRP.users_by_source[menu.user.source]
         local character_id = user.cid
         local bank_id, bank_name = Banking:getUserBank(user)
-        if bank_id then 
+        if bank_id then
             local bankData = Banking:IDBankInfo(bank_id)
-            if bankData then 
+            if bankData then
                 local taxes_out_percent = bankData.taxes_out
                 local taxes_in_percent = bankData.taxes_in
+                local acc_price = bankData.create_acc
 
                 menu.title = bank_name.." Bank"
                 menu.css.header_color = "rgba(0,255,0,0.75)"
 
-                if character_id then 
+                if character_id then
                     local identity = vRP.EXT.Identity:getIdentity(character_id)
 
-                    local deposit_message = "Deposit funds into your bank account: <br>Taxes: "..taxes_in_percent.."%"
-                    if Banking.cfg.min_deposit > 0 then
-                        deposit_message = deposit_message .. "<br> Min. deposit: $" .. formatNumber(Banking.cfg.min_deposit)
+                    local account = Banking:getBankAccount(character_id, bank_id)
+                    if not account then
+                        menu:addOption("Create Account", function()
+                            local try = user:request("Create an account for "..bank_name.." bank ("..acc_price.."$)", 10)
+                            if try then
+                            if user:tryPayment(acc_price) then 
+                            exports.oxmysql:executeSync("INSERT INTO vrp_banks_accounts (character_id, bank_id, bank_name) VALUES (?, ?, ?)", {character_id, bank_id, bank_name})
+                            exports.oxmysql:executeSync("UPDATE vrp_banks SET taxes_profit = taxes_profit + ? WHERE bank_id = ?", {acc_price, bank_id})
+                            vRP.EXT.Base.remote._notify(user.source, "Bank account created successfully.")
+                            user:actualizeMenu(menu)
+                            else
+                            vRP.EXT.Base.remote._notify(user.source, "Not enough money to create an account. Account creation costs " .. acc_price .. "$")
+                        end
                     end
+                    end, "Create an account for "..bank_name.." bank ($" .. acc_price .. ")")
+                else
+                        local deposit_message = "Deposit funds into your bank account: <br>Taxes: "..taxes_in_percent.."%"
+                        if Banking.cfg.min_deposit > 0 then
+                            deposit_message = deposit_message .. "<br> Min. deposit: $" .. formatNumber(Banking.cfg.min_deposit)
+                        end
 
-                    local withdraw_message = "Withdraw funds from your bank account: <br>Taxes: "..taxes_out_percent.."%"
-                    if Banking.cfg.min_withdraw > 0 then
-                        withdraw_message = withdraw_message .. "<br> Min. withdrawal: $" .. formatNumber(Banking.cfg.min_withdraw)
+                        local withdraw_message = "Withdraw funds from your bank account: <br>Taxes: "..taxes_out_percent.."%"
+                        if Banking.cfg.min_withdraw > 0 then
+                            withdraw_message = withdraw_message .. "<br> Min. withdrawal: $" .. formatNumber(Banking.cfg.min_withdraw)
+                        end
+
+                        menu:addOption("Account Info", nil, string.format(identity.firstname.." "..identity.name.." account:<br>Wallet Balance: %s<br>Bank Balance: %s",
+                            htmlEntities.encode(formatNumber(user:getWallet())), htmlEntities.encode(formatNumber(user:getBank()))))
+
+                        menu:addOption("Transactions", see_transactions, "Your Transactions")
+
+                        menu:addOption("Deposit Money", function()
+                            local deposit_amount = user:prompt("Enter the amount to deposit:", "")
+                            Banking:deposit(deposit_amount)
+                            user:actualizeMenu(menu)
+                        end, deposit_message)
+
+                        menu:addOption("Withdraw Funds", function()
+                            local withdraw_amount = user:prompt("Enter the amount to withdraw:", "")
+                            Banking:withdraw(withdraw_amount)
+                            user:actualizeMenu(menu)
+                        end, withdraw_message)
                     end
-
-                    menu:addOption("Account Info", nil, string.format(identity.firstname.." "..identity.name.." account:<br>Wallet Balance: %s<br>Bank Balance: %s",
-                        htmlEntities.encode(formatNumber(user:getWallet())), htmlEntities.encode(formatNumber(user:getBank()))))
-
-                    menu:addOption("Transactions", see_transactions,"Your Transactions")
-
-                    menu:addOption("Deposit Money", function()
-                        local deposit_amount = user:prompt("Enter the amount to deposit:", "")
-                        Banking:deposit(deposit_amount)
-                        user:actualizeMenu(menu)
-                    end, deposit_message)
-
-                    menu:addOption("Withdraw Funds", function()
-                        local withdraw_amount = user:prompt("Enter the amount to withdraw:", "")
-                        Banking:withdraw(withdraw_amount)
-                        user:actualizeMenu(menu)
-                    end, withdraw_message)
                 end
             end
         end
@@ -467,7 +489,7 @@ local function buy_bank() -- BUY BANKS
         local user = vRP.users_by_source[menu.user.source]
         local user_id = user.id
         local character_id = user.cid
-        local bankData = user:BanksInfo(character_id)
+        local bankData = Banking:BanksInfo(character_id)
 
         if character_id then 
             for _, bankData in ipairs(Banking.cfg.banks) do
@@ -502,12 +524,40 @@ local function buy_bank() -- BUY BANKS
     end)
 end           
 
+local function cards()
+    vRP.EXT.GUI:registerMenuBuilder("cards", function(menu)
+        menu.title = "Bank Accounts"
+        menu.css.header_color = "rgba(0,255,0,0.75)"
+        local user = menu.user
+        local character_id = user.cid
+
+        if character_id then
+            local accounts = exports.oxmysql:executeSync("SELECT character_id, bank_id, bank_name FROM vrp_banks_accounts WHERE character_id = ?", {character_id})
+            if accounts and #accounts > 0 then
+                for _, account in ipairs(accounts) do
+                    menu:addOption(account.bank_name, function()
+                    end)
+                end
+            else
+                menu:addOption("No accounts", nil, "You have no bank accounts.")
+            end
+        end
+    end)
+end
+
+local function m_cards(menu)
+    menu.user:openMenu("cards")
+  end
+
+  vRP.EXT.GUI:registerMenuBuilder("main", function(menu)
+    menu:addOption("Bank Accounts", m_cards, "Your banks accounts")
+  end)
+
 function Banking:__construct()
     vRP.Extension.__construct(self)
     
     self.cfg = module("vrp_banking", "cfg/cfg")
 
-    
     -- load async
     async(function()
         vRP:prepare("vRP/banks", [[
@@ -519,6 +569,7 @@ function Banking:__construct()
                     taxes_profit INT NOT NULL DEFAULT 0,
                     taxes_in INT NOT NULL DEFAULT 0,
                     taxes_out INT NOT NULL DEFAULT 0,
+                    create_acc INT NOT NULL DEFAULT 0,
                     deposit_level INT NOT NULL DEFAULT 1
                 );
                 CREATE TABLE IF NOT EXISTS vrp_banks_transactions (
@@ -528,6 +579,14 @@ function Banking:__construct()
                     transaction_type ENUM('Deposit', 'Withdraw', 'Transfer', 'Deposit Bussines','Withdraw Bussines') NOT NULL,
                     amount DECIMAL(12) NOT NULL,
                     transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (character_id) REFERENCES vrp_users(id),
+                    FOREIGN KEY (bank_id) REFERENCES vrp_banks(bank_id) 
+                );
+                CREATE TABLE IF NOT EXISTS vrp_banks_accounts (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    character_id INT NOT NULL, 
+                    bank_id INT NOT NULL,
+                    bank_name VARCHAR(255) NOT NULL,
                     FOREIGN KEY (character_id) REFERENCES vrp_users(id),
                     FOREIGN KEY (bank_id) REFERENCES vrp_banks(bank_id) 
                 );
@@ -541,12 +600,16 @@ function Banking:__construct()
             vRP:prepare("vRP/taxes_in", "UPDATE vrp_banks SET taxes_in = @taxes_percent WHERE owner_id = @character_id")
             vRP:prepare("vRP/taxes_out", "UPDATE vrp_banks SET taxes_out = @taxes_percent WHERE owner_id = @character_id")
 
+            vRP:prepare("vRP/create_acc", "UPDATE vrp_banks SET create_acc = @acc_price WHERE owner_id = @character_id")
+
+
             vRP:prepare("vRP/add_taxes_profit", "UPDATE vrp_banks SET taxes_profit = taxes_profit + @taxed_amount WHERE owner_id = @character_id")
             vRP:prepare("vRP/take_taxes_profit", "UPDATE vrp_banks SET taxes_profit = taxes_profit - @amount WHERE owner_id = @character_id")
 
             vRP:prepare("vRP/update_bank_money", "UPDATE vrp_banks SET money = money + @amount WHERE owner_id = @character_id")
  
 
+    cards(self)        
 	buy_bank(self) 
     Bank_Info(self)
     BankFunctions(self)
@@ -561,6 +624,33 @@ function Banking:__construct()
 		end
 end
 
+function Banking:getBankAccount(character_id, bank_id)
+    local rows = exports.oxmysql:executeSync("SELECT character_id, bank_id, bank_name FROM vrp_banks_accounts WHERE character_id = ? AND bank_id = ?", {character_id, bank_id})
+    if rows and #rows > 0 then
+        return rows[1] 
+    else
+        return nil
+    end
+end
+
+
+function Banking:GetUserTransactions(character_id)
+    local transactions = {} 
+    local rows = exports.oxmysql:executeSync("SELECT transaction_type, amount, DATE_FORMAT(transaction_date, '%d-%m-%Y') AS formatted_date, DATE_FORMAT(transaction_date, '%H:%i:%s') AS formatted_hours FROM vrp_banks_transactions WHERE character_id = ?", {character_id})
+    if rows then
+        for _, row in ipairs(rows) do
+            local transaction = {
+                transaction_type = row.transaction_type,
+                amount = row.amount,
+                transaction_date = row.formatted_date,
+                transaction_hours = row.formatted_hours
+            }
+            table.insert(transactions, transaction) 
+        end
+    end
+    return transactions
+end
+
 function Banking:IDBankInfo(bank_id)
     local rows = exports.oxmysql:executeSync("SELECT * FROM vrp_banks WHERE bank_id = ?", {bank_id})
     if rows and #rows > 0 then
@@ -571,14 +661,16 @@ function Banking:IDBankInfo(bank_id)
         local Profit = bankData.taxes_profit
         local taxesIn = bankData.taxes_in
         local taxesOut = bankData.taxes_out
+        local acc_price = bankData.create_acc
         local dep_lvl = bankData.deposit_level
-        return { bank_id = bankId, bank_name = bankName, money = money, taxes_in = taxesIn, taxes_out = taxesOut, taxes_profit = Profit, deposit_level = dep_lvl}
+        return { bank_id = bankId, bank_name = bankName, money = money, taxes_in = taxesIn, taxes_out = taxesOut, taxes_profit = Profit, create_acc = acc_price, deposit_level = dep_lvl}
     else
         return nil
     end
 end
 
-function Banking.User:BanksInfo(character_id)
+
+function Banking:BanksInfo(character_id)
     local rows = exports.oxmysql:executeSync("SELECT * FROM vrp_banks WHERE owner_id = ?", {character_id })
     if rows and #rows > 0 then
         local bankData = rows[1]
@@ -588,8 +680,9 @@ function Banking.User:BanksInfo(character_id)
         local Profit = bankData.taxes_profit
         local taxesIn = bankData.taxes_in
         local taxesOut = bankData.taxes_out
+        local acc_price = bankData.create_acc
         local dep_lvl = bankData.deposit_level
-        return { bank_id = bankId, bank_name = bankName, money = money, taxes_in = taxesIn, taxes_out = taxesOut, taxes_profit = Profit, deposit_level = dep_lvl}
+        return { bank_id = bankId, bank_name = bankName, money = money, taxes_in = taxesIn, taxes_out = taxesOut, taxes_profit = Profit, create_acc = acc_price, deposit_level = dep_lvl}
     else
         return nil
     end
