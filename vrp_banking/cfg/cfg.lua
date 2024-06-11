@@ -8,6 +8,9 @@ cfg.taxes_in_max = 5 -- max % taxes for deposit money
 cfg.taxes_out_min = 1 -- minimum % taxes for withdraw money
 cfg.taxes_out_max = 10 -- max % taxes for withdraw money
 
+cfg.acc_price_min = 1000 -- min to open an account
+cfg.acc_price_max = 10000 -- max to open an account
+
 cfg.state_taxes = 10  -- $ taxes from State, whne you taxe profit from your bank you pay taxes for bussines
 cfg.min_withdraw = 1000 -- minimum amount to withdraw money from bank
 cfg.min_deposit = 1000 -- minimum amount to deposit money from bank
