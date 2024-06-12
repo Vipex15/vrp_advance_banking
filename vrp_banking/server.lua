@@ -447,7 +447,7 @@ local function BankFunctions(self)
                             else
                                 vRP.EXT.Base.remote._notify(user.source, "Invalid code. Please enter a 4-digit PIN code.")
                             end
-                        end, "Create an account for " .. bank_name .. " ($" .. acc_price .. ")")
+                        end, "Create an account for " .. bank_name .. " ( " .. acc_price .. "$ )")
                     else
                         menu:addOption("Access Account", function()
                             local input_code = user:prompt("Enter your 4-digit PIN code:", "")
