@@ -9,7 +9,6 @@ Account Creation and PIN Management:
 
 Players can create new bank accounts by setting a unique 4-digit PIN.
 The script ensures the PIN is stored securely and validated correctly, preventing unauthorized access.
-Players can update their PIN through the account settings for added security.
 Secure Transactions:
 
 Deposit: Easily deposit in-game currency into the bank account, ensuring safe storage.
