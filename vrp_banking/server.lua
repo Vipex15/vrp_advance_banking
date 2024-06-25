@@ -1,3 +1,9 @@
+-------------------------------------------------------------------------------------------------------------
+
+---------------------------------------Ianis Catalin - Vipex15-----------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------
+
 local Banking = class("Banking", vRP.Extension)
 
 Banking.User = class("User")
@@ -86,7 +92,7 @@ local function profit_taxes(menu) -- make profit from your bank
                     if user:tryGiveItem("money", final_amout) then
                         local transaction_date = os.date("%Y-%m-%d %H:%M:%S")
                         local transaction_type = "Withdraw Bussines"
-                        exports.oxmysql:execute("INSERT IGNORE INTO vrp_banks_transactions (character_id, bank_id, transaction_type, amount, transaction_date) VALUES (?, ?, ?, ?, ?)", {character_id, bankData.bank_id, transaction_type, final_amout, transaction_date}, function()
+                        exports.oxmysql:execute("INSERT IGNORE INTO vrp_banks_transactions (character_id, bank_id, bank_name, transaction_type, amount, transaction_date) VALUES (?, ?, ?, ?, ?, ?)",  {character_id, bankData.bank_id,bankData.bank_name, transaction_type, amount, transaction_date}, function()
                             vRP:execute("vRP/take_taxes_profit", {character_id = character_id, taxes_profit = amount})
                             vRP.EXT.Base.remote._notify(user_id, "Withdrawn: $" .. final_amout .. " | State taxes: " .. Banking.cfg.state_taxes.."%")
                             user:actualizeMenu(menu)
@@ -129,7 +135,7 @@ local function add_stacks(menu) -- add money in bank for player
                                     if user:tryTakeItem("money", amount) then
                                         local transaction_date = os.date("%Y-%m-%d %H:%M:%S")
                                         local transaction_type = "Deposit Bussines"
-                                        exports.oxmysql:execute("INSERT IGNORE INTO vrp_banks_transactions (character_id, bank_id, transaction_type, amount, transaction_date) VALUES (?, ?, ?, ?, ?)", {character_id, bankData.bank_id, transaction_type, amount, transaction_date}, function()
+                                        exports.oxmysql:execute("INSERT IGNORE INTO vrp_banks_transactions (character_id, bank_id,bank_name, transaction_type, amount, transaction_date) VALUES (?, ?, ?, ?, ?, ?)",  {character_id, bankData.bank_id,bankData.bank_name, transaction_type, amount, transaction_date}, function()
                                             vRP:execute("vRP/update_bank_money", {character_id = character_id, amount = amount})
                                             vRP.EXT.Base.remote._notify(user_id, "Added $" .. amount .. " to your bank.")
                                             user:actualizeMenu(menu)
@@ -237,27 +243,39 @@ local function transactions_menu(self)
         
         local user = vRP.users_by_source[menu.user.source]
         local character_id = user.cid
+        local bank_id = Banking:getUserBank(user)  -- Assuming this function returns the current bank ID
+        if bank_id then
+            local bankData = Banking:IDBankInfo(bank_id) 
+            if bankData then 
 
-        if character_id then 
-            local transactions = Banking:GetUserTransactions(character_id)
-            
-            if next(transactions) then
-                table.sort(transactions, function(a, b)
-                    if a.transaction_date == b.transaction_date then
-                        return a.transaction_hours > b.transaction_hours
+                if character_id then 
+                    local transactions = Banking:GetTransactionByBank(character_id, bank_id) 
+                    
+                    if next(transactions) then
+                        table.sort(transactions, function(a, b)
+                            if a.transaction_date == b.transaction_date then
+                                return a.transaction_hours > b.transaction_hours
+                            else
+                                return a.transaction_date > b.transaction_date
+                            end
+                        end)
+
+                        for index = 1, #transactions do
+                            local transaction = transactions[index]
+                            local transaction_info = string.format(bankData.bank_name.." Bank<br> Transaction %d:<br>Type: %s<br>Amount: %s$<br>Date: %s <br>Hours:%s", index, transaction.transaction_type, transaction.amount, transaction.transaction_date, transaction.transaction_hours)
+                            menu:addOption("Transaction " .. index, nil, transaction_info)
+                        end
                     else
-                        return a.transaction_date > b.transaction_date
+                        menu:addOption("No Transactions", nil, "You have no transactions.")
                     end
-                end)
-
-                for index = 1, #transactions do
-                    local transaction = transactions[index]
-                    local transaction_info = string.format("Transaction %d:<br>Type: %s<br>Amount: %s$<br>Date: %s <br>Hours:%s", index, transaction.transaction_type, transaction.amount, transaction.transaction_date, transaction.transaction_hours)
-                    menu:addOption("Transaction " .. index, nil, transaction_info)
+                else
+                    vRP.EXT.Base.remote._notify(user.source, "Character ID not found.")
                 end
             else
-                menu:addOption("No Transactions", nil, "You have no transactions.")
+                vRP.EXT.Base.remote._notify(user.source, "Bank data not found.")
             end
+        else
+            vRP.EXT.Base.remote._notify(user.source, "Bank ID not found.")
         end
     end)
 end
@@ -355,7 +373,7 @@ function Banking:withdraw(amount)
                         if user:tryWithdraw(amount) and user:tryPayCard(taxed_amount) then
                             local transaction_date = os.date("%Y-%m-%d %H:%M:%S")
                             local transaction_type = "Withdraw"
-                            exports.oxmysql:execute("INSERT IGNORE INTO vrp_banks_transactions (character_id, bank_id, transaction_type, amount, transaction_date) VALUES (?, ?, ?, ?, ?)",  {character_id, bank_id, transaction_type, amount, transaction_date}, function()
+                            exports.oxmysql:execute("INSERT IGNORE INTO vrp_banks_transactions (character_id, bank_id,bank_name, transaction_type, amount, transaction_date) VALUES (?, ?, ?, ?, ?, ?)",  {character_id, bankData.bank_id,bankData.bank_name, transaction_type, amount, transaction_date}, function()
                                 vRP:execute("vRP/add_taxes_profit", {character_id = character_id, taxed_amount = taxed_amount}) 
                                 vRP.EXT.Base.remote._notify(user_id, "Withdrawn: $" .. formatNumber(amount) .. " (Taxed: " .. formatNumber(taxed_amount).."$)")
                             end)
@@ -396,7 +414,7 @@ function Banking:deposit(amount)-- DEPOSIT MONEY INTO YOUR ACCOUNT AND BANK
                         if user:tryDeposit(amount) and user:tryPayCard(taxed_amount) then
                             local transaction_date = os.date("%Y-%m-%d %H:%M:%S")
                             local transaction_type = "Deposit"
-                            exports.oxmysql:execute("INSERT IGNORE INTO vrp_banks_transactions (character_id, bank_id, transaction_type, amount, transaction_date) VALUES (?, ?, ?, ?, ?)",  {character_id, bankData.bank_id, transaction_type, amount, transaction_date}, function()
+                            exports.oxmysql:execute("INSERT IGNORE INTO vrp_banks_transactions (character_id, bank_id,bank_name, transaction_type, amount, transaction_date) VALUES (?, ?, ?, ?, ?, ?)",  {character_id, bankData.bank_id,bankData.bank_name, transaction_type, amount, transaction_date}, function()
                                 vRP:execute("vRP/add_taxes_profit", {character_id = character_id, taxed_amount = taxed_amount}) 
                                 exports.oxmysql:execute("UPDATE vrp_banks SET money = money + ? WHERE bank_id = ?", {amount, bankData.bank_id})
                                 vRP.EXT.Base.remote._notify(user_id, "Deposited: $" .. formatNumber(amount) .. " (Taxed: " ..formatNumber(taxed_amount).."$)")
@@ -438,8 +456,9 @@ local function BankFunctions(self)
                             local code = user:prompt("Enter a 4-digit PIN code for your new account:", "")
                             if code and string.len(code) == 4 and tonumber(code) then
                                 if user:tryPayment(acc_price) then
-                                    Banking:createBankAccount(character_id, bank_id, bank_name, tonumber(code))
+                                    Banking:createBankAccount(character_id, bank_id, bank_name, code)  -- Pass code as string
                                     vRP.EXT.Base.remote._notify(user.source, "Bank account created successfully.")
+                                    vRP.EXT.Base.remote._notify(user.source, "You paid: "..acc_price.." $")
                                     user:actualizeMenu(menu)
                                 else
                                     vRP.EXT.Base.remote._notify(user.source, "Not enough money to create an account. Account creation costs $" .. acc_price .. ".")
@@ -451,7 +470,7 @@ local function BankFunctions(self)
                     else
                         menu:addOption("Access Account", function()
                             local input_code = user:prompt("Enter your 4-digit PIN code:", "")
-                            local right_code = Banking:validateBankCode(character_id, bank_id, tonumber(input_code))
+                            local right_code = Banking:validateBankCode(character_id, bank_id, input_code)  -- Validate as string
                             if right_code then                            
                                 user:openMenu("bank_usage")
                             else
@@ -482,7 +501,7 @@ local function Bank_useg(self)
                 local taxes_out_percent = bankData.taxes_out
                 local taxes_in_percent = bankData.taxes_in
 
-                menu:addOption("Account Info", nil, string.format(identity.firstname.." "..identity.name.." Bank Balance: %s", htmlEntities.encode(formatNumber(user:getBank()))))
+                menu:addOption("Account Info", nil, string.format(identity.firstname.." "..identity.name.."<br> Bank Balance: %s", htmlEntities.encode(formatNumber(user:getBank()))))
                 menu:addOption("Transactions", see_transactions, "Your Transactions")
 
                 local deposit_message = "Deposit funds into your bank account: <br>Taxes: "..taxes_in_percent.."%"
@@ -609,7 +628,8 @@ function Banking:__construct()
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     character_id INT NOT NULL, 
                     bank_id INT NOT NULL,
-                    transaction_type ENUM('Deposit', 'Withdraw', 'Deposit Bussines','Withdraw Bussines') NOT NULL,
+                    bank_name VARCHAR(255) NOT NULL,
+                    transaction_type ENUM('Deposit', 'Withdraw', 'Transfer', 'Deposit Bussines','Withdraw Bussines') NOT NULL,
                     amount DECIMAL(12) NOT NULL,
                     transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (character_id) REFERENCES vrp_users(id),
@@ -620,15 +640,16 @@ function Banking:__construct()
                     character_id INT NOT NULL, 
                     bank_id INT NOT NULL,
                     bank_name VARCHAR(255) NOT NULL,
-                    code INT NOT NULL,
+                    code VARCHAR(255) NOT NULL,
                     FOREIGN KEY (character_id) REFERENCES vrp_users(id),
                     FOREIGN KEY (bank_id) REFERENCES vrp_banks(bank_id) 
                 );
             ]])
             vRP:execute("vRP/banks")
             end)
-			vRP:prepare("vRP/insert_bank", "UPDATE vrp_banks SET owner_id = @character_id WHERE bank_id = @bank_id")
-			vRP:prepare("vRP/select_bank", "SELECT bank_id FROM vrp_banks WHERE owner_id = @character_id")
+	
+	    vRP:prepare("vRP/insert_bank", "UPDATE vrp_banks SET owner_id = @character_id WHERE bank_id = @bank_id")
+	    vRP:prepare("vRP/select_bank", "SELECT bank_id FROM vrp_banks WHERE owner_id = @character_id")
             vRP:prepare("vRP/delete_bank", "UPDATE vrp_banks SET owner_id = 0 WHERE owner_id = @character_id AND bank_id = @bank_id")
 
             vRP:prepare("vRP/taxes_in", "UPDATE vrp_banks SET taxes_in = @taxes_percent WHERE owner_id = @character_id")
@@ -641,12 +662,9 @@ function Banking:__construct()
 
             vRP:prepare("vRP/update_bank_money", "UPDATE vrp_banks SET money = money + @amount WHERE owner_id = @character_id")
 
-            vRP:prepare("vRP/create_bank_account", "INSERT INTO vrp_banks_accounts (character_id, bank_id, bank_name, code) VALUES (@character_id, @bank_id, @bank_name, @code)")
-        
- 
 
     cards(self)        
-	buy_bank(self) 
+    buy_bank(self) 
     Bank_Info(self)
     Bank_useg(self)
     BankFunctions(self)
@@ -658,20 +676,19 @@ function Banking:__construct()
     for _, bankData in ipairs(self.cfg.banks) do
         exports.oxmysql:execute("INSERT IGNORE INTO vrp_banks (bank_id, bank_name) VALUES (?, ?)",  {bankData.bank_id, bankData.bank_name},  function()
             end)
-		end
+	end
 end
 
 function Banking:createBankAccount(character_id, bank_id, bank_name, code)
-    vRP:execute("vRP/create_bank_account", {character_id = character_id, bank_id = bank_id, bank_name = bank_name, code = code})
+    exports.oxmysql:executeSync("INSERT INTO vrp_banks_accounts (character_id, bank_id, bank_name, code) VALUES (?, ?, ?, ?)", {character_id, bank_id, bank_name, code})
 end
 
 function Banking:validateBankCode(character_id, bank_id, input_code)
-    local stored_code = self:getBankCode(character_id, bank_id)
-    if stored_code and tonumber(stored_code) == tonumber(input_code) then
-        return true
-    else
-        return false
+    local rows = exports.oxmysql:executeSync("SELECT code FROM vrp_banks_accounts WHERE character_id = ? AND bank_id = ?", {character_id, bank_id})
+    if rows and rows[1] then
+        return rows[1].code == input_code 
     end
+    return false
 end
 
 function Banking:getBankCode(character_id, bank_id)
@@ -706,6 +723,24 @@ function Banking:GetUserTransactions(character_id)
                 transaction_hours = row.formatted_hours
             }
             table.insert(transactions, transaction) 
+        end
+    end
+    return transactions
+end
+
+
+function Banking:GetTransactionByBank(character_id, bank_id)
+    local transactions = {}
+    local rows = exports.oxmysql:executeSync("SELECT transaction_type, amount, DATE_FORMAT(transaction_date, '%d-%m-%Y') AS formatted_date, DATE_FORMAT(transaction_date, '%H:%i:%s') AS formatted_hours FROM vrp_banks_transactions WHERE character_id = ? AND bank_id = ?", {character_id, bank_id})
+    if rows then
+        for _, row in ipairs(rows) do
+            local transaction = {
+                transaction_type = row.transaction_type,
+                amount = row.amount,
+                transaction_date = row.formatted_date,
+                transaction_hours = row.formatted_hours
+            }
+            table.insert(transactions, transaction)
         end
     end
     return transactions
