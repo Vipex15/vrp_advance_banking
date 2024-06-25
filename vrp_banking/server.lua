@@ -609,7 +609,7 @@ function Banking:__construct()
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     character_id INT NOT NULL, 
                     bank_id INT NOT NULL,
-                    transaction_type ENUM('Deposit', 'Withdraw', 'Transfer', 'Deposit Bussines','Withdraw Bussines') NOT NULL,
+                    transaction_type ENUM('Deposit', 'Withdraw', 'Deposit Bussines','Withdraw Bussines') NOT NULL,
                     amount DECIMAL(12) NOT NULL,
                     transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (character_id) REFERENCES vrp_users(id),
