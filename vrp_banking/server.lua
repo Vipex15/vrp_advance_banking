@@ -15,6 +15,19 @@ Banking.tunnel = {}
 
 local htmlEntities = module("lib/htmlEntities")
 
+function Banking.User:tryPayCard(amount, dry)
+    local user = vRP.users_by_source[source]
+    local money = user:getBank()
+    if amount >= 0 and money >= amount then
+      if not dry then
+        user:setBank(money-amount)
+      end
+      return true
+    else
+      return false
+    end
+  end
+
 local function formatNumber(number)
     if type(number) == "number" then
         local _, _, minus, int, fraction = tostring(number):find('([-]?)(%d+)([.]?%d*)')
