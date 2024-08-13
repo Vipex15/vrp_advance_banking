@@ -16,11 +16,10 @@ Banking.tunnel = {}
 local htmlEntities = module("lib/htmlEntities")
 
 function Banking.User:tryPayCard(amount, dry)
-    local user = vRP.users_by_source[source]
-    local money = user:getBank()
+    local money = self:getBank()
     if amount >= 0 and money >= amount then
       if not dry then
-        user:setBank(money-amount)
+        self:setBank(money-amount)
       end
       return true
     else
