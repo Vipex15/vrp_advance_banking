@@ -369,83 +369,78 @@ end
 
 function Banking:withdraw(amount)
     local user = vRP.users_by_source[source]
-    if user then
-        local user_id = user.id
-        local character_id = user.cid
-        local bank_id = Banking:getUserBank(user)
-        if bank_id then
-            local bankData = Banking:IDBankInfo(bank_id)
-            if bankData then
-                local taxes_out_percent = bankData.taxes_out
-                local balance = user:getBank()
-                amount = tonumber(amount)
-                if amount and amount >= Banking.cfg.min_withdraw and amount <= balance then
-                    local taxed_amount = math.floor(amount * (taxes_out_percent / 100))
-                    if tonumber(amount) <= tonumber(bankData.money) then
-                        if user:tryWithdraw(amount) and user:tryPayCard(taxed_amount) then
-                            -- Update the bank balance
-                            exports.oxmysql:execute("UPDATE vrp_banks SET money = money - ? WHERE bank_id = ?", {amount, bank_id})
+    local user_id = user.id
+    local character_id = user.cid
+    local bank_id = Banking:getUserBank(user)
+    local bankData = Banking:IDBankInfo(bank_id)
 
-                            -- Add the transaction to the database
-                            Banking:AddTransaction(character_id, bankData.bank_id, bankData.bank_name, "Withdraw", amount)
+    if bankData then
+        local taxes_out_percent = bankData.taxes_out
+        local balance = user:getBank()
+        amount = tonumber(amount)
 
-                            -- Notify the user and handle taxes
-                            vRP:execute("vRP/add_taxes_profit", {character_id = character_id, taxed_amount = taxed_amount})
-                            vRP.EXT.Base.remote._notify(user_id, "Withdrawn: $" .. formatNumber(amount) .. " (Taxed: " .. formatNumber(taxed_amount) .. "$)")
-                        else
-                            vRP.EXT.Base.remote._notify(user_id, "Failed to withdraw funds.")
-                        end
-                    else
-                        vRP.EXT.Base.remote._notify(user_id, "Not enough funds in the bank.")
-                    end
+        if amount and amount >= Banking.cfg.min_withdraw and amount <= balance then
+            local taxed_amount = math.floor(amount * (taxes_out_percent / 100))
+            local final_amount = amount + taxed_amount
+
+            if final_amount <= tonumber(bankData.money) then
+                if user:tryWithdraw(amount) and user:tryPayment(taxed_amount) then
+                    exports.oxmysql:execute("UPDATE vrp_banks SET money = money - ? WHERE bank_id = ?", {final_amount, bank_id})
+                    Banking:AddTransaction(character_id, bankData.bank_id, bankData.bank_name, "Withdraw", amount)
+                    vRP:execute("vRP/add_taxes_profit", {character_id = character_id, taxed_amount = taxed_amount})
+                    vRP.EXT.Base.remote._notify(user_id, string.format("Withdrawn: $%s (Taxed: $%s)", formatNumber(amount), formatNumber(taxed_amount)))
                 else
-                    vRP.EXT.Base.remote._notify(user_id, "Invalid withdrawal amount.")
+                    vRP.EXT.Base.remote._notify(user_id, "Failed to withdraw funds.")
                 end
+            else
+                vRP.EXT.Base.remote._notify(user_id, "Not enough funds in the bank.")
             end
+        else
+            vRP.EXT.Base.remote._notify(user_id, "Invalid withdrawal amount or insufficient balance.")
         end
+    else
+        vRP.EXT.Base.remote._notify(user_id, "Bank information is not available.")
     end
 end
 
 
-function Banking:deposit(amount) -- DEPOSIT MONEY INTO YOUR ACCOUNT AND BANK
+function Banking:deposit(amount)
     local user = vRP.users_by_source[source]
-    if user then
-        local user_id = user.id
-        local character_id = user.cid
-        local bank_id = Banking:getUserBank(user)
-        if bank_id then
-            local bankData = Banking:IDBankInfo(bank_id)
-            if bankData then
-                local lvl_dep = bankData.deposit_level
-                local infos_upgrade = Banking.cfg.upgrades[lvl_dep]
-                local max_money = infos_upgrade.max_money_in_bank
-                local money_bank = bankData.money
-                local balance = user:getWallet()
-                amount = tonumber(amount)
-                if amount and amount >= Banking.cfg.min_deposit and amount <= balance then
-                    local taxes_in_percent = bankData.taxes_in
-                    local taxed_amount = math.floor(amount * (taxes_in_percent / 100))
-                    if amount == balance then
-                        taxed_amount = math.floor(balance * (taxes_in_percent / 100))
-                        amount = balance 
-                    end
-                    if money_bank + amount <= max_money then
-                        if user:tryDeposit(amount - taxed_amount) and user:tryPayCard(taxed_amount) then
-                            exports.oxmysql:execute("UPDATE vrp_banks SET money = money + ? WHERE bank_id = ?", {amount - taxed_amount, bankData.bank_id})
-                            Banking:AddTransaction(character_id, bankData.bank_id, bankData.bank_name, "Deposit", amount - taxed_amount)
-                            vRP:execute("vRP/add_taxes_profit", {character_id = character_id, taxed_amount = taxed_amount})
-                            vRP.EXT.Base.remote._notify(user_id, "Deposited: " .. formatNumber(amount - taxed_amount) .. "$ (Taxed: " .. formatNumber(taxed_amount) .. "$)")
-                        else
-                            vRP.EXT.Base.remote._notify(user_id, "Failed to deposit funds.")
-                        end
-                    else
-                        vRP.EXT.Base.remote._notify(user_id, "Bank is full.")
-                    end
+    local user_id = user.id
+    local character_id = user.cid
+    local bank_id = Banking:getUserBank(user)
+    local bankData = Banking:IDBankInfo(bank_id)
+
+    if bankData then
+        local lvl_dep = bankData.deposit_level
+        local infos_upgrade = Banking.cfg.upgrades[lvl_dep]
+        local max_money = infos_upgrade.max_money_in_bank
+        local money_bank = bankData.money
+        local balance = user:getWallet()
+        amount = tonumber(amount)
+
+        if amount and amount >= Banking.cfg.min_deposit and amount <= balance then
+            local taxes_in_percent = bankData.taxes_in
+            local taxed_amount = math.floor(amount * (taxes_in_percent / 100))
+            local final_amount = (amount == balance) and (balance - taxed_amount) or (amount - taxed_amount)
+
+            if final_amount >= 0 and money_bank + final_amount <= max_money then
+                if user:tryDeposit(final_amount) and user:tryPayment(taxed_amount) then
+                    exports.oxmysql:execute("UPDATE vrp_banks SET money = money + ? WHERE bank_id = ?", {final_amount, bankData.bank_id})
+                    Banking:AddTransaction(character_id, bankData.bank_id, bankData.bank_name, "Deposit", final_amount)
+                    vRP:execute("vRP/add_taxes_profit", {character_id = character_id, taxed_amount = taxed_amount})
+                    vRP.EXT.Base.remote._notify(user_id, string.format("Deposited: $%s (Taxed: $%s)", formatNumber(final_amount), formatNumber(taxed_amount)))
                 else
-                    vRP.EXT.Base.remote._notify(user_id, "Invalid deposit amount or insufficient balance.")
+                    vRP.EXT.Base.remote._notify(user_id, "Failed to deposit funds.")
                 end
+            else
+                vRP.EXT.Base.remote._notify(user_id, "Bank is full or deposit amount after taxes is too low.")
             end
+        else
+            vRP.EXT.Base.remote._notify(user_id, "Invalid deposit amount or insufficient balance.")
         end
+    else
+        vRP.EXT.Base.remote._notify(user_id, "Bank information is not available.")
     end
 end
 
