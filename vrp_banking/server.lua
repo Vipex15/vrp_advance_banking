@@ -467,7 +467,7 @@ local function BankFunctions(self)
                             local code = user:prompt("Enter a 4-digit PIN code for your new account:", "")
                             if code and string.len(code) == 4 and tonumber(code) then
                                 if user:tryPayment(acc_price) then
-                                    Banking:createBankAccount(character_id, bank_id, bank_name, code)  
+                                    Banking:createBankAccount(character_id, bank_id, bank_name, code)  -- Pass code as string
                                     vRP.EXT.Base.remote._notify(user.source, "Bank account created successfully.")
                                     vRP.EXT.Base.remote._notify(user.source, "You paid: "..acc_price.." $")
                                     user:actualizeMenu(menu)
@@ -481,7 +481,7 @@ local function BankFunctions(self)
                     else
                         menu:addOption("Access Account", function()
                             local input_code = user:prompt("Enter your 4-digit PIN code:", "")
-                            local right_code = Banking:validateBankCode(character_id, bank_id, input_code)  
+                            local right_code = Banking:validateBankCode(character_id, bank_id, input_code)  -- Validate as string
                             if right_code then                            
                                 user:openMenu("bank_usage")
                             else
@@ -683,7 +683,10 @@ function Banking:__construct()
 
     menu_police_pc_trans(self)
 
-
+    for _, bankData in ipairs(self.cfg.banks) do
+        exports.oxmysql:execute("INSERT IGNORE INTO vrp_banks (bank_id, bank_name) VALUES (?, ?)",  {bankData.bank_id, bankData.bank_name},  function()
+            end)
+		end
 end
 
 function Banking:AddTransaction(character_id, bank_id, bank_name, transaction_type, amount)
@@ -699,6 +702,7 @@ function Banking:AddTransaction(character_id, bank_id, bank_name, transaction_ty
         end
     end
 
+    -- Now, insert the new transaction
     exports.oxmysql:executeSync("INSERT INTO vrp_banks_transactions (character_id, bank_id, bank_name, transaction_type, amount) VALUES (?, ?, ?, ?, ?)", 
         {character_id, bank_id, bank_name, transaction_type, amount})
 end
@@ -879,7 +883,7 @@ function Banking.event:playerSpawn(user, first_spawn)
             local bank_id = v.bank_id
             local bank_name = v.bank_name
 
-            local Bankx, Banky, Bankz = bank_locations.x, bank_locations.y, bank_locations.z 
+            local Bankx, Banky, Bankz = bank_locations.x, bank_locations.y, bank_locations.z -- ENTER BANKS FUCNTIONALITY DEPOSIT / WITHDRAWS
 
             local function BankFuncitons(user)
                 user:openMenu("Bank Functions")
