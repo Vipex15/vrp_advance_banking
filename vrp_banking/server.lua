@@ -683,10 +683,6 @@ function Banking:__construct()
 
     menu_police_pc_trans(self)
 
-    for _, bankData in ipairs(self.cfg.banks) do
-        exports.oxmysql:execute("INSERT IGNORE INTO vrp_banks (bank_id, bank_name) VALUES (?, ?)",  {bankData.bank_id, bankData.bank_name},  function()
-            end)
-		end
 end
 
 function Banking:AddTransaction(character_id, bank_id, bank_name, transaction_type, amount)
